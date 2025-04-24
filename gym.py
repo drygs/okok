@@ -7,6 +7,7 @@ import requests
 import base64
 
 # Forçar tema escuro GLOBALMENTE (funciona no Render)
+os.environ["STREAMLIT_THEME_BASE"] = "dark"  # Força via variável de ambiente
 st.set_page_config(page_title="Gym Tracker", page_icon="🏋️‍♂️", layout="wide", initial_sidebar_state="expanded")
 st._config.set_option("theme.base", "dark")  # ✨ Mágica que resolve no Render
 
