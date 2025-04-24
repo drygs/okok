@@ -3,161 +3,109 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
-import requests
 import base64
+import requests
+import json
 
-# Forçar tema escuro GLOBALMENTE (funciona no Render)
-os.environ["STREAMLIT_THEME_BASE"] = "dark"  # Força via variável de ambiente
+# Configuração da página
 st.set_page_config(
-    page_title="Gym Tracker",
+    page_title="Gym Progress Tracker",
     page_icon="🏋️‍♂️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
-st._config.set_option("theme.base", "dark")  # Configuração interna
-
-# 🔄 Configuração de armazenamento (GitHub como "banco de dados")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO = "drygs/okok"
-GITHUB_BRANCH = "main"
-DATA_FILES = {
-    "treinos": "treinos.csv",
-    "progresso": "progresso.csv",
-    "metas": "metas.csv"
-}
 
 # 🎨 Estilos CSS personalizados
 st.markdown("""
     <style>
-    :root {
-        --primary-color: #ff4b4b;
-        --background-color: #0e1117;
-        --secondary-background-color: #262730;
-        --text-color: #fafafa;
-    }
-    
-    .stApp, .main {
-        background-color: var(--background-color) !important;
-        color: var(--text-color) !important;
-    }
-    
-    .stButton>button {
-        width: 100%;
-        background-color: var(--secondary-background-color) !important;
-        color: var(--text-color) !important;
-    }
-    
-    .stNumberInput, .stTextInput, .stSelectbox {
-        width: 100%;
-        background-color: var(--secondary-background-color) !important;
-        color: var(--text-color) !important;
-    }
-    
-    .metric-card {
-        border-radius: 10px;
-        padding: 15px;
-        background-color: var(--secondary-background-color) !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 15px;
-        border: 1px solid #444 !important;
-    }
-    
-    .progress-header {
-        color: #2e86ab;
-        border-bottom: 2px solid #2e86ab;
-    }
-    
-    .stContainer {
-        border: 1px solid #444;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
-        color: var(--text-color) !important;
-    }
+    .main {background-color: #f5f5f5;}
+    .stButton>button {width: 100%;}
+    .stNumberInput {width: 100%;}
+    .metric-card {border-radius: 10px; padding: 15px; background-color: white; 
+                  box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 15px;}
+    .progress-header {color: #2e86ab; border-bottom: 2px solid #2e86ab;}
     </style>
 """, unsafe_allow_html=True)
 
-# ======================================
-# 🔄 FUNÇÕES DE ARMAZENAMENTO (GitHub)
-# ======================================
-def load_from_github(filename):
-    """Carrega dados de um arquivo CSV no GitHub"""
-    if not GITHUB_TOKEN:
-        return pd.DataFrame()
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}?ref={GITHUB_BRANCH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        content = base64.b64decode(response.json()["content"]).decode("utf-8")
-        return pd.read_csv(pd.compat.StringIO(content))
-    except:
-        return pd.DataFrame()
+# 🔄 Configuração de armazenamento (GitHub como "banco de dados")
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")  # Adicione no Render.com > Settings > Secrets
+GITHUB_REPO = "drygs/okok"  # Ex: "joaosilva/gym-data"
+GITHUB_BRANCH = "main"
+DATA_FILES = {
+    "treinos": "data/treinos.csv",
+    "progresso": "data/progresso.csv",
+    "metas": "data/metas.csv"
+}
 
-def save_to_github(filename, df):
-    """Salva DataFrame num arquivo CSV no GitHub"""
-    if not GITHUB_TOKEN:
-        return False
-    
-    content = df.to_csv(index=False)
-    content_base64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}?ref={GITHUB_BRANCH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    
-    try:
-        response = requests.get(url, headers=headers)
-        sha = response.json()["sha"] if response.status_code == 200 else None
-    except:
-        sha = None
-    
-    data = {
-        "message": f"Update {filename}",
-        "content": content_base64,
-        "branch": GITHUB_BRANCH,
-        **({"sha": sha} if sha else {})
+def get_file_sha(path):
+    """Obtém o SHA de um arquivo existente no repositório"""
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}?ref={GITHUB_BRANCH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()["sha"]
+    return None
+
+def load_data_from_github(file_key):
+    """Carrega dados do arquivo CSV no GitHub ou retorna DataFrame vazio"""
+    path = DATA_FILES[file_key]
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}?ref={GITHUB_BRANCH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
     }
     
-    upload_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}"
-    response = requests.put(upload_url, headers=headers, json=data)
-    return response.status_code == 200
-
-def load_data(file_key, default_columns=None):
-    """Carrega dados do GitHub ou local"""
-    filename = DATA_FILES[file_key]
+    response = requests.get(url, headers=headers)
     
-    if GITHUB_TOKEN:
-        df = load_from_github(filename)
+    if response.status_code == 200:
+        content = response.json()["content"]
+        decoded_content = base64.b64decode(content).decode("utf-8")
+        return pd.read_csv(pd.compat.StringIO(decoded_content))
+    elif response.status_code == 404:
+        # Arquivo não existe, retorna DataFrame vazio
+        if file_key == "treinos":
+            return pd.DataFrame(columns=["Data", "Dia", "Grupo Muscular", "Exercício", "Carga (kg)", "Repetições", "Séries", "Observações"])
+        elif file_key == "progresso":
+            return pd.DataFrame(columns=["Data", "Peso (kg)", "Horas de Sono", "Cansaço", "Humor", "Calorias", "Água (copos)"])
+        elif file_key == "metas":
+            return pd.DataFrame(columns=["Meta", "Valor", "Atual"])
     else:
-        local_path = os.path.join("gym_data", filename)
-        if os.path.exists(local_path):
-            df = pd.read_csv(local_path)
-        else:
-            df = pd.DataFrame()
-    
-    if df.empty and default_columns:
-        return pd.DataFrame(columns=default_columns)
-    return df
+        st.error(f"Erro ao carregar dados do GitHub: {response.status_code}")
+        return pd.DataFrame()
 
-def save_data(file_key, df):
-    """Salva dados no GitHub ou local"""
-    filename = DATA_FILES[file_key]
+def save_data_to_github(df, file_key):
+    """Salva DataFrame no arquivo CSV no GitHub"""
+    path = DATA_FILES[file_key]
+    content = df.to_csv(index=False)
+    encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
     
-    if GITHUB_TOKEN:
-        return save_to_github(filename, df)
-    else:
-        os.makedirs("gym_data", exist_ok=True)
-        df.to_csv(os.path.join("gym_data", filename), index=False)
-        return True
+    sha = get_file_sha(path)
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    data = {
+        "message": f"Atualização de {file_key} via app",
+        "content": encoded_content,
+        "branch": GITHUB_BRANCH
+    }
+    
+    if sha:
+        data["sha"] = sha
+    
+    response = requests.put(url, headers=headers, data=json.dumps(data))
+    
+    if response.status_code not in [200, 201]:
+        st.error(f"Erro ao salvar dados no GitHub: {response.status_code}")
+        st.write(response.json())
+        return False
+    return True
 
-# ======================================
-# 🏋️‍♂️ CÓDIGO PRINCIPAL
-# ======================================
 # 🧭 Navegação por abas
 aba = st.sidebar.selectbox("📂 Navegação", ["📅 Treino Diário", "📊 Progresso", "🏆 Metas", "⚙️ Configurações"])
 
@@ -195,13 +143,6 @@ if 'treino_por_dia' not in st.session_state:
         }
     }
 
-# Custom container function (substitute for border parameter)
-def bordered_container():
-    return st.container().markdown(
-        """<style>div[data-testid="stVerticalBlock"]{border: 1px solid #444; border-radius: 8px; padding: 1rem;}</style>""",
-        unsafe_allow_html=True
-    )
-
 # 🏋️‍♂️ ABA DE TREINO DIÁRIO
 if aba == "📅 Treino Diário":
     st.title(f"🏋️‍♂️ Treino - {dia_semana}-feira")
@@ -230,7 +171,7 @@ if aba == "📅 Treino Diário":
             
             for i, exercicio in enumerate(exercicios):
                 with cols[i % 3]:
-                    with bordered_container():
+                    with st.container(border=True):
                         st.write(f"**{exercicio}**")
                         carga = st.number_input("Carga (kg)", min_value=0.0, step=2.5, key=f"{exercicio}_carga")
                         repeticoes = st.number_input("Repetições", min_value=0, step=1, key=f"{exercicio}_rep")
@@ -252,17 +193,15 @@ if aba == "📅 Treino Diário":
         with col1:
             if st.button("💾 Salvar Treino", type="primary"):
                 df_novo = pd.DataFrame(registros)
-                df_antigo = load_data("treinos")
+                df_antigo = load_data_from_github("treinos")
                 df_total = pd.concat([df_antigo, df_novo], ignore_index=True)
-                if save_data("treinos", df_total):
-                    st.success("✅ Treino salvo com sucesso!")
+                if save_data_to_github(df_total, "treinos"):
+                    st.success("✅ Treino salvo com sucesso no GitHub!")
                     st.balloons()
-                else:
-                    st.error("Erro ao salvar treino")
         
         with col2:
             if st.button("📈 Ver Histórico"):
-                df = load_data("treinos")
+                df = load_data_from_github("treinos")
                 if not df.empty:
                     st.dataframe(
                         df[df["Dia"] == dia_semana].sort_values("Data", ascending=False),
@@ -270,6 +209,7 @@ if aba == "📅 Treino Diário":
                         use_container_width=True
                     )
                     
+                    # Gráfico de progresso para cada exercício
                     exercicios_dia = [ex for grupo in st.session_state.treino_por_dia[dia_semana].values() for ex in grupo]
                     for exercicio in exercicios_dia:
                         df_ex = df[df["Exercício"] == exercicio]
@@ -312,20 +252,19 @@ elif aba == "📊 Progresso":
                 "Água (copos)": agua
             }])
             
-            df_antigo = load_data("progresso")
+            df_antigo = load_data_from_github("progresso")
             df_total = pd.concat([df_antigo, df_novo], ignore_index=True)
-            if save_data("progresso", df_total):
-                st.success("✅ Progresso salvo com sucesso!")
-            else:
-                st.error("Erro ao salvar progresso")
+            if save_data_to_github(df_total, "progresso"):
+                st.success("✅ Progresso salvo com sucesso no GitHub!")
         
-        st.markdown("---")
+        st.divider()
         st.subheader("Histórico de Progresso")
         
-        df_progresso = load_data("progresso")
+        df_progresso = load_data_from_github("progresso")
         if not df_progresso.empty:
             df_progresso["Data"] = pd.to_datetime(df_progresso["Data"])
             
+            # Mostrar métricas recentes
             ultimo_registro = df_progresso.iloc[-1]
             cols = st.columns(4)
             with cols[0]:
@@ -337,6 +276,7 @@ elif aba == "📊 Progresso":
             with cols[3]:
                 st.metric("Dias Registrados", len(df_progresso))
             
+            # Gráficos
             fig = px.line(df_progresso, x="Data", y=["Peso (kg)", "Horas de Sono", "Água (copos)"],
                          title="Progresso ao Longo do Tempo")
             st.plotly_chart(fig, use_container_width=True)
@@ -347,19 +287,22 @@ elif aba == "📊 Progresso":
     
     with tab2:
         st.subheader("Evolução de Cargas")
-        df_treinos = load_data("treinos")
+        df_treinos = load_data_from_github("treinos")
         
         if not df_treinos.empty:
+            # Selecionar exercício para análise
             exercicio_selecionado = st.selectbox("Escolha um exercício", df_treinos["Exercício"].unique())
             
             df_exercicio = df_treinos[df_treinos["Exercício"] == exercicio_selecionado].sort_values("Data")
             
             if not df_exercicio.empty:
+                # Gráfico de progresso
                 fig = px.line(df_exercicio, x="Data", y="Carga (kg)", 
                              title=f"Progresso no {exercicio_selecionado}",
                              markers=True)
                 st.plotly_chart(fig, use_container_width=True)
                 
+                # Estatísticas
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Maior Carga", f"{df_exercicio['Carga (kg)'].max()} kg")
@@ -369,6 +312,7 @@ elif aba == "📊 Progresso":
                     progresso = df_exercicio['Carga (kg)'].iloc[-1] - df_exercicio['Carga (kg)'].iloc[0]
                     st.metric("Progresso Total", f"{progresso:.1f} kg")
                 
+                # Tabela com todos os registros
                 st.dataframe(df_exercicio, hide_index=True)
             else:
                 st.warning("Nenhum dado encontrado para este exercício.")
@@ -377,24 +321,26 @@ elif aba == "📊 Progresso":
     
     with tab3:
         st.subheader("Frequência de Treinos")
-        df_treinos = load_data("treinos")
+        df_treinos = load_data_from_github("treinos")
         
         if not df_treinos.empty:
             df_treinos["Data"] = pd.to_datetime(df_treinos["Data"])
             
+            # Contagem de treinos por dia
             df_frequencia = df_treinos.groupby("Dia").size().reset_index(name="Contagem")
             fig = px.bar(df_frequencia, x="Dia", y="Contagem", 
                          title="Treinos por Dia da Semana",
                          color="Dia")
             st.plotly_chart(fig, use_container_width=True)
             
+            # Calendário de treinos (últimos 30 dias)
             data_limite = datetime.now() - timedelta(days=30)
             df_recente = df_treinos[df_treinos["Data"] >= data_limite]
             
             if not df_recente.empty:
                 st.write("**Últimos Treinos:**")
                 for _, row in df_recente.sort_values("Data", ascending=False).iterrows():
-                    with bordered_container():
+                    with st.container(border=True):
                         st.write(f"**{row['Data'].strftime('%d/%m')}** - {row['Dia']}")
                         st.write(f"{row['Grupo Muscular']}: {row['Exercício']} ({row['Carga (kg)']}kg)")
             else:
@@ -406,7 +352,8 @@ elif aba == "📊 Progresso":
 elif aba == "🏆 Metas":
     st.title("🏆 Metas e Objetivos")
     
-    df_metas = load_data("metas", default_columns=["Meta", "Valor", "Atual"])
+    # Carregar metas salvas ou usar padrão
+    df_metas = load_data_from_github("metas")
     
     if df_metas.empty:
         metas_padrao = [
@@ -437,16 +384,15 @@ elif aba == "🏆 Metas":
         
         if st.button("Salvar Metas"):
             df_metas = pd.DataFrame(metas_editaveis)
-            if save_data("metas", df_metas):
-                st.success("Metas atualizadas com sucesso!")
-            else:
-                st.error("Erro ao salvar metas")
+            if save_data_to_github(df_metas, "metas"):
+                st.success("Metas atualizadas com sucesso no GitHub!")
     
     with col2:
         st.subheader("Progresso das Metas")
         
-        df_progresso = load_data("progresso")
-        df_treinos = load_data("treinos")
+        # Atualizar valores atuais
+        df_progresso = load_data_from_github("progresso")
+        df_treinos = load_data_from_github("treinos")
         
         for i, row in df_metas.iterrows():
             if row["Meta"] == "Peso" and not df_progresso.empty:
@@ -460,8 +406,9 @@ elif aba == "🏆 Metas":
             elif row["Meta"] == "Dias de Treino" and not df_treinos.empty:
                 df_metas.at[i, "Atual"] = df_treinos["Data"].nunique()
         
+        # Mostrar progresso
         for _, row in df_metas.iterrows():
-            with bordered_container():
+            with st.container(border=True):
                 st.write(f"**{row['Meta']}**")
                 if pd.notna(row["Atual"]):
                     progresso = (row["Atual"] / row["Valor"]) * 100
@@ -482,6 +429,7 @@ elif aba == "⚙️ Configurações":
         default=list(st.session_state.treino_por_dia.keys())
     )
     
+    # Editor de treinos
     novo_treino = {}
     for dia in dias_treino:
         st.markdown(f"### {dia}")
@@ -504,39 +452,38 @@ elif aba == "⚙️ Configurações":
         st.session_state.treino_por_dia = novo_treino
         st.success("Plano de treino atualizado com sucesso!")
     
-    st.markdown("---")
+    st.divider()
     st.subheader("Exportar/Importar Dados")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if os.path.exists(os.path.join("gym_data", "treinos.csv")):
-            with open(os.path.join("gym_data", "treinos.csv"), "rb") as f:
-                st.download_button(
-                    label="📤 Exportar Dados de Treino",
-                    data=f,
-                    file_name="treinos_backup.csv",
-                    mime="text/csv"
-                )
+        # Exportar dados
+        df_treinos = load_data_from_github("treinos")
+        if not df_treinos.empty:
+            st.download_button(
+                label="📤 Exportar Dados de Treino",
+                data=df_treinos.to_csv(index=False).encode("utf-8"),
+                file_name="treinos_backup.csv",
+                mime="text/csv"
+            )
         else:
             st.warning("Nenhum dado de treino para exportar")
     
     with col2:
+        # Importar dados
         uploaded_file = st.file_uploader("📥 Importar Dados", type=["csv"])
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
                 
+                # Verificar se é um arquivo válido
                 if "Exercício" in df.columns and "Carga (kg)" in df.columns:
-                    if save_data("treinos", df):
-                        st.success("Dados de treino importados com sucesso!")
-                    else:
-                        st.error("Erro ao salvar dados importados")
+                    if save_data_to_github(df, "treinos"):
+                        st.success("Dados de treino importados com sucesso para o GitHub!")
                 elif "Peso (kg)" in df.columns and "Horas de Sono" in df.columns:
-                    if save_data("progresso", df):
-                        st.success("Dados de progresso importados com sucesso!")
-                    else:
-                        st.error("Erro ao salvar dados importados")
+                    if save_data_to_github(df, "progresso"):
+                        st.success("Dados de progresso importados com sucesso para o GitHub!")
                 else:
                     st.error("Formato de arquivo não reconhecido")
                 
