@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 🔄 Configuração de armazenamento (GitHub como "banco de dados")
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")  # Adicione no Render.com > Settings > Secrets
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")  # Adicione no Render.com > Settings > Secrets
 GITHUB_REPO = "drygs/okok"  # Ex: "joaosilva/gym-data"
 GITHUB_BRANCH = "main"
 DATA_FILES = {
