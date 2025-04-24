@@ -6,6 +6,10 @@ import plotly.express as px
 import requests
 import base64
 
+# Forçar tema escuro GLOBALMENTE (funciona no Render)
+st.set_page_config(page_title="Gym Tracker", page_icon="🏋️‍♂️", layout="wide", initial_sidebar_state="expanded")
+st._config.set_option("theme.base", "dark")  # ✨ Mágica que resolve no Render
+
 # 🔄 Configuração de armazenamento (GitHub como "banco de dados")
 # Modifique para:
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Mais robusto que st.secrets para produção
@@ -17,12 +21,6 @@ DATA_FILES = {
     "metas": "metas.csv"
 }
 
-# Configuração da página
-st.set_page_config(
-    page_title="Gym Progress Tracker",
-    page_icon="🏋️‍♂️",
-    layout="wide"
-)
 
 # 🎨 Estilos CSS personalizados
 st.markdown("""
