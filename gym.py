@@ -26,7 +26,7 @@ DATA_FILES = {
 # 🎨 Estilos CSS personalizados
 st.markdown("""
     <style>
-    .main {background-color: #f5f5f5;}
+    .main {background-color: #171717;}
     .stButton>button {width: 100%;}
     .stNumberInput {width: 100%;}
     .metric-card {border-radius: 10px; padding: 15px; background-color: white; 
