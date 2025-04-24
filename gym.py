@@ -3,6 +3,18 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
+import requests
+import base64
+
+# 🔄 Configuração de armazenamento (GitHub como "banco de dados")
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
+GITHUB_REPO = "drygs/okok"  # Seu repositório
+GITHUB_BRANCH = "main"
+DATA_FILES = {
+    "treinos": "treinos.csv",
+    "progresso": "progresso.csv",
+    "metas": "metas.csv"
+}
 
 # Configuração da página
 st.set_page_config(
@@ -23,28 +35,88 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 📂 Configuração da pasta de dados
-DATA_DIR = "gym_data"
-os.makedirs(DATA_DIR, exist_ok=True)
+# ======================================
+# 🔄 FUNÇÕES DE ARMAZENAMENTO (GitHub)
+# ======================================
+def load_from_github(filename):
+    """Carrega dados de um arquivo CSV no GitHub"""
+    if not GITHUB_TOKEN:
+        return pd.DataFrame()
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}?ref={GITHUB_BRANCH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        content = base64.b64decode(response.json()["content"]).decode("utf-8")
+        return pd.read_csv(pd.compat.StringIO(content))
+    except:
+        return pd.DataFrame()
 
-# Caminhos dos arquivos
-TREINOS_CSV = os.path.join(DATA_DIR, "treinos.csv")
-PROGRESSO_CSV = os.path.join(DATA_DIR, "progresso.csv")
-METAS_CSV = os.path.join(DATA_DIR, "metas.csv")
+def save_to_github(filename, df):
+    """Salva DataFrame num arquivo CSV no GitHub"""
+    if not GITHUB_TOKEN:
+        return False
+    
+    content = df.to_csv(index=False)
+    content_base64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+    
+    # Verifica se o arquivo já existe
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}?ref={GITHUB_BRANCH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        sha = response.json()["sha"] if response.status_code == 200 else None
+    except:
+        sha = None
+    
+    # Faz o upload
+    data = {
+        "message": f"Update {filename}",
+        "content": content_base64,
+        "branch": GITHUB_BRANCH,
+        **({"sha": sha} if sha else {})
+    }
+    
+    upload_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}"
+    response = requests.put(upload_url, headers=headers, json=data)
+    return response.status_code == 200
 
-# Funções para manipulação de dados
-def load_data(file_path, default_columns=None):
-    """Carrega dados do arquivo CSV ou retorna DataFrame vazio com colunas padrão"""
-    if os.path.exists(file_path):
-        return pd.read_csv(file_path)
-    if default_columns:
+def load_data(file_key, default_columns=None):
+    """Carrega dados do GitHub ou local"""
+    filename = DATA_FILES[file_key]
+    
+    if GITHUB_TOKEN:
+        df = load_from_github(filename)
+    else:
+        # Fallback para armazenamento local
+        local_path = os.path.join("gym_data", filename)
+        if os.path.exists(local_path):
+            df = pd.read_csv(local_path)
+        else:
+            df = pd.DataFrame()
+    
+    if df.empty and default_columns:
         return pd.DataFrame(columns=default_columns)
-    return pd.DataFrame()
+    return df
 
-def save_data(df, file_path):
-    """Salva DataFrame no arquivo CSV"""
-    df.to_csv(file_path, index=False)
+def save_data(file_key, df):
+    """Salva dados no GitHub ou local"""
+    filename = DATA_FILES[file_key]
+    
+    if GITHUB_TOKEN:
+        return save_to_github(filename, df)
+    else:
+        # Fallback para armazenamento local
+        os.makedirs("gym_data", exist_ok=True)
+        df.to_csv(os.path.join("gym_data", filename), index=False)
+        return True
 
+# ======================================
+# 🏋️‍♂️ CÓDIGO PRINCIPAL (mantido igual)
+# ======================================
 # 🧭 Navegação por abas
 aba = st.sidebar.selectbox("📂 Navegação", ["📅 Treino Diário", "📊 Progresso", "🏆 Metas", "⚙️ Configurações"])
 
@@ -132,15 +204,17 @@ if aba == "📅 Treino Diário":
         with col1:
             if st.button("💾 Salvar Treino", type="primary"):
                 df_novo = pd.DataFrame(registros)
-                df_antigo = load_data(TREINOS_CSV)
+                df_antigo = load_data("treinos")
                 df_total = pd.concat([df_antigo, df_novo], ignore_index=True)
-                save_data(df_total, TREINOS_CSV)
-                st.success("✅ Treino salvo com sucesso!")
-                st.balloons()
+                if save_data("treinos", df_total):
+                    st.success("✅ Treino salvo com sucesso!")
+                    st.balloons()
+                else:
+                    st.error("Erro ao salvar treino")
         
         with col2:
             if st.button("📈 Ver Histórico"):
-                df = load_data(TREINOS_CSV)
+                df = load_data("treinos")
                 if not df.empty:
                     st.dataframe(
                         df[df["Dia"] == dia_semana].sort_values("Data", ascending=False),
@@ -191,15 +265,17 @@ elif aba == "📊 Progresso":
                 "Água (copos)": agua
             }])
             
-            df_antigo = load_data(PROGRESSO_CSV)
+            df_antigo = load_data("progresso")
             df_total = pd.concat([df_antigo, df_novo], ignore_index=True)
-            save_data(df_total, PROGRESSO_CSV)
-            st.success("✅ Progresso salvo com sucesso!")
+            if save_data("progresso", df_total):
+                st.success("✅ Progresso salvo com sucesso!")
+            else:
+                st.error("Erro ao salvar progresso")
         
         st.divider()
         st.subheader("Histórico de Progresso")
         
-        df_progresso = load_data(PROGRESSO_CSV)
+        df_progresso = load_data("progresso")
         if not df_progresso.empty:
             df_progresso["Data"] = pd.to_datetime(df_progresso["Data"])
             
@@ -226,7 +302,7 @@ elif aba == "📊 Progresso":
     
     with tab2:
         st.subheader("Evolução de Cargas")
-        df_treinos = load_data(TREINOS_CSV)
+        df_treinos = load_data("treinos")
         
         if not df_treinos.empty:
             # Selecionar exercício para análise
@@ -260,7 +336,7 @@ elif aba == "📊 Progresso":
     
     with tab3:
         st.subheader("Frequência de Treinos")
-        df_treinos = load_data(TREINOS_CSV)
+        df_treinos = load_data("treinos")
         
         if not df_treinos.empty:
             df_treinos["Data"] = pd.to_datetime(df_treinos["Data"])
@@ -292,7 +368,7 @@ elif aba == "🏆 Metas":
     st.title("🏆 Metas e Objetivos")
     
     # Carregar metas salvas ou usar padrão
-    df_metas = load_data(METAS_CSV, default_columns=["Meta", "Valor", "Atual"])
+    df_metas = load_data("metas", default_columns=["Meta", "Valor", "Atual"])
     
     if df_metas.empty:
         metas_padrao = [
@@ -323,15 +399,17 @@ elif aba == "🏆 Metas":
         
         if st.button("Salvar Metas"):
             df_metas = pd.DataFrame(metas_editaveis)
-            save_data(df_metas, METAS_CSV)
-            st.success("Metas atualizadas com sucesso!")
+            if save_data("metas", df_metas):
+                st.success("Metas atualizadas com sucesso!")
+            else:
+                st.error("Erro ao salvar metas")
     
     with col2:
         st.subheader("Progresso das Metas")
         
         # Atualizar valores atuais
-        df_progresso = load_data(PROGRESSO_CSV)
-        df_treinos = load_data(TREINOS_CSV)
+        df_progresso = load_data("progresso")
+        df_treinos = load_data("treinos")
         
         for i, row in df_metas.iterrows():
             if row["Meta"] == "Peso" and not df_progresso.empty:
@@ -398,8 +476,8 @@ elif aba == "⚙️ Configurações":
     
     with col1:
         # Exportar dados
-        if os.path.exists(TREINOS_CSV):
-            with open(TREINOS_CSV, "rb") as f:
+        if os.path.exists(os.path.join("gym_data", "treinos.csv")):
+            with open(os.path.join("gym_data", "treinos.csv"), "rb") as f:
                 st.download_button(
                     label="📤 Exportar Dados de Treino",
                     data=f,
@@ -418,11 +496,15 @@ elif aba == "⚙️ Configurações":
                 
                 # Verificar se é um arquivo válido
                 if "Exercício" in df.columns and "Carga (kg)" in df.columns:
-                    save_data(df, TREINOS_CSV)
-                    st.success("Dados de treino importados com sucesso!")
+                    if save_data("treinos", df):
+                        st.success("Dados de treino importados com sucesso!")
+                    else:
+                        st.error("Erro ao salvar dados importados")
                 elif "Peso (kg)" in df.columns and "Horas de Sono" in df.columns:
-                    save_data(df, PROGRESSO_CSV)
-                    st.success("Dados de progresso importados com sucesso!")
+                    if save_data("progresso", df):
+                        st.success("Dados de progresso importados com sucesso!")
+                    else:
+                        st.error("Erro ao salvar dados importados")
                 else:
                     st.error("Formato de arquivo não reconhecido")
                 
