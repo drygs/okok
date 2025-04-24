@@ -2,5 +2,4 @@ streamlit
 pandas
 plotly
 requests
-altair
-numpy
+python-dotenv

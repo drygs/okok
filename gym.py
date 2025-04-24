@@ -6,6 +6,7 @@ import plotly.express as px
 import base64
 import requests
 import json
+from io import StringIO
 
 # Configuração da página
 st.set_page_config(
@@ -62,7 +63,7 @@ def load_data_from_github(file_key):
     if response.status_code == 200:
         content = response.json()["content"]
         decoded_content = base64.b64decode(content).decode("utf-8")
-        return pd.read_csv(pd.compat.StringIO(decoded_content))
+        return pd.read_csv(StringIO(decoded_content))
     elif response.status_code == 404:
         # Arquivo não existe, retorna DataFrame vazio
         if file_key == "treinos":
