@@ -1,5 +1,5 @@
-streamlit==1.29.0  # Versão estável mais recente (verifique a última no PyPI)
-pandas==1.5.3
-plotly==5.11.0
-requests==2.28.2
-python-dotenv==0.21.0
+streamlit>=1.0.0  # Pega a versão mais nova disponível
+pandas>=1.5.3
+plotly>=5.11.0
+requests>=2.28.2
+python-dotenv>=0.21.0
