@@ -7,7 +7,8 @@ import requests
 import base64
 
 # 🔄 Configuração de armazenamento (GitHub como "banco de dados")
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
+# Modifique para:
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Mais robusto que st.secrets para produção
 GITHUB_REPO = "drygs/okok"  # Seu repositório
 GITHUB_BRANCH = "main"
 DATA_FILES = {
