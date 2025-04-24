@@ -8,13 +8,17 @@ import base64
 
 # Forçar tema escuro GLOBALMENTE (funciona no Render)
 os.environ["STREAMLIT_THEME_BASE"] = "dark"  # Força via variável de ambiente
-st.set_page_config(page_title="Gym Tracker", page_icon="🏋️‍♂️", layout="wide", initial_sidebar_state="expanded")
-st._config.set_option("theme.base", "dark")  # ✨ Mágica que resolve no Render
+st.set_page_config(
+    page_title="Gym Tracker",
+    page_icon="🏋️‍♂️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+st._config.set_option("theme.base", "dark")  # Configuração interna
 
 # 🔄 Configuração de armazenamento (GitHub como "banco de dados")
-# Modifique para:
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # Mais robusto que st.secrets para produção
-GITHUB_REPO = "drygs/okok"  # Seu repositório
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPO = "drygs/okok"
 GITHUB_BRANCH = "main"
 DATA_FILES = {
     "treinos": "treinos.csv",
@@ -22,16 +26,57 @@ DATA_FILES = {
     "metas": "metas.csv"
 }
 
-
 # 🎨 Estilos CSS personalizados
 st.markdown("""
     <style>
-    .main {background-color: #171717;}
-    .stButton>button {width: 100%;}
-    .stNumberInput {width: 100%;}
-    .metric-card {border-radius: 10px; padding: 15px; background-color: white; 
-                  box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 15px;}
-    .progress-header {color: #2e86ab; border-bottom: 2px solid #2e86ab;}
+    :root {
+        --primary-color: #ff4b4b;
+        --background-color: #0e1117;
+        --secondary-background-color: #262730;
+        --text-color: #fafafa;
+    }
+    
+    .stApp, .main {
+        background-color: var(--background-color) !important;
+        color: var(--text-color) !important;
+    }
+    
+    .stButton>button {
+        width: 100%;
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+    }
+    
+    .stNumberInput, .stTextInput, .stSelectbox {
+        width: 100%;
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+    }
+    
+    .metric-card {
+        border-radius: 10px;
+        padding: 15px;
+        background-color: var(--secondary-background-color) !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 15px;
+        border: 1px solid #444 !important;
+    }
+    
+    .progress-header {
+        color: #2e86ab;
+        border-bottom: 2px solid #2e86ab;
+    }
+    
+    .stContainer {
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
+        color: var(--text-color) !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -62,7 +107,6 @@ def save_to_github(filename, df):
     content = df.to_csv(index=False)
     content_base64 = base64.b64encode(content.encode("utf-8")).decode("utf-8")
     
-    # Verifica se o arquivo já existe
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/gym_data/{filename}?ref={GITHUB_BRANCH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     
@@ -72,7 +116,6 @@ def save_to_github(filename, df):
     except:
         sha = None
     
-    # Faz o upload
     data = {
         "message": f"Update {filename}",
         "content": content_base64,
@@ -91,7 +134,6 @@ def load_data(file_key, default_columns=None):
     if GITHUB_TOKEN:
         df = load_from_github(filename)
     else:
-        # Fallback para armazenamento local
         local_path = os.path.join("gym_data", filename)
         if os.path.exists(local_path):
             df = pd.read_csv(local_path)
@@ -109,13 +151,12 @@ def save_data(file_key, df):
     if GITHUB_TOKEN:
         return save_to_github(filename, df)
     else:
-        # Fallback para armazenamento local
         os.makedirs("gym_data", exist_ok=True)
         df.to_csv(os.path.join("gym_data", filename), index=False)
         return True
 
 # ======================================
-# 🏋️‍♂️ CÓDIGO PRINCIPAL (mantido igual)
+# 🏋️‍♂️ CÓDIGO PRINCIPAL
 # ======================================
 # 🧭 Navegação por abas
 aba = st.sidebar.selectbox("📂 Navegação", ["📅 Treino Diário", "📊 Progresso", "🏆 Metas", "⚙️ Configurações"])
@@ -154,6 +195,13 @@ if 'treino_por_dia' not in st.session_state:
         }
     }
 
+# Custom container function (substitute for border parameter)
+def bordered_container():
+    return st.container().markdown(
+        """<style>div[data-testid="stVerticalBlock"]{border: 1px solid #444; border-radius: 8px; padding: 1rem;}</style>""",
+        unsafe_allow_html=True
+    )
+
 # 🏋️‍♂️ ABA DE TREINO DIÁRIO
 if aba == "📅 Treino Diário":
     st.title(f"🏋️‍♂️ Treino - {dia_semana}-feira")
@@ -182,7 +230,7 @@ if aba == "📅 Treino Diário":
             
             for i, exercicio in enumerate(exercicios):
                 with cols[i % 3]:
-                    with st.container(border=True):
+                    with bordered_container():
                         st.write(f"**{exercicio}**")
                         carga = st.number_input("Carga (kg)", min_value=0.0, step=2.5, key=f"{exercicio}_carga")
                         repeticoes = st.number_input("Repetições", min_value=0, step=1, key=f"{exercicio}_rep")
@@ -222,7 +270,6 @@ if aba == "📅 Treino Diário":
                         use_container_width=True
                     )
                     
-                    # Gráfico de progresso para cada exercício
                     exercicios_dia = [ex for grupo in st.session_state.treino_por_dia[dia_semana].values() for ex in grupo]
                     for exercicio in exercicios_dia:
                         df_ex = df[df["Exercício"] == exercicio]
@@ -272,14 +319,13 @@ elif aba == "📊 Progresso":
             else:
                 st.error("Erro ao salvar progresso")
         
-        st.divider()
+        st.markdown("---")
         st.subheader("Histórico de Progresso")
         
         df_progresso = load_data("progresso")
         if not df_progresso.empty:
             df_progresso["Data"] = pd.to_datetime(df_progresso["Data"])
             
-            # Mostrar métricas recentes
             ultimo_registro = df_progresso.iloc[-1]
             cols = st.columns(4)
             with cols[0]:
@@ -291,7 +337,6 @@ elif aba == "📊 Progresso":
             with cols[3]:
                 st.metric("Dias Registrados", len(df_progresso))
             
-            # Gráficos
             fig = px.line(df_progresso, x="Data", y=["Peso (kg)", "Horas de Sono", "Água (copos)"],
                          title="Progresso ao Longo do Tempo")
             st.plotly_chart(fig, use_container_width=True)
@@ -305,19 +350,16 @@ elif aba == "📊 Progresso":
         df_treinos = load_data("treinos")
         
         if not df_treinos.empty:
-            # Selecionar exercício para análise
             exercicio_selecionado = st.selectbox("Escolha um exercício", df_treinos["Exercício"].unique())
             
             df_exercicio = df_treinos[df_treinos["Exercício"] == exercicio_selecionado].sort_values("Data")
             
             if not df_exercicio.empty:
-                # Gráfico de progresso
                 fig = px.line(df_exercicio, x="Data", y="Carga (kg)", 
                              title=f"Progresso no {exercicio_selecionado}",
                              markers=True)
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Estatísticas
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Maior Carga", f"{df_exercicio['Carga (kg)'].max()} kg")
@@ -327,7 +369,6 @@ elif aba == "📊 Progresso":
                     progresso = df_exercicio['Carga (kg)'].iloc[-1] - df_exercicio['Carga (kg)'].iloc[0]
                     st.metric("Progresso Total", f"{progresso:.1f} kg")
                 
-                # Tabela com todos os registros
                 st.dataframe(df_exercicio, hide_index=True)
             else:
                 st.warning("Nenhum dado encontrado para este exercício.")
@@ -341,21 +382,19 @@ elif aba == "📊 Progresso":
         if not df_treinos.empty:
             df_treinos["Data"] = pd.to_datetime(df_treinos["Data"])
             
-            # Contagem de treinos por dia
             df_frequencia = df_treinos.groupby("Dia").size().reset_index(name="Contagem")
             fig = px.bar(df_frequencia, x="Dia", y="Contagem", 
                          title="Treinos por Dia da Semana",
                          color="Dia")
             st.plotly_chart(fig, use_container_width=True)
             
-            # Calendário de treinos (últimos 30 dias)
             data_limite = datetime.now() - timedelta(days=30)
             df_recente = df_treinos[df_treinos["Data"] >= data_limite]
             
             if not df_recente.empty:
                 st.write("**Últimos Treinos:**")
                 for _, row in df_recente.sort_values("Data", ascending=False).iterrows():
-                    with st.container(border=True):
+                    with bordered_container():
                         st.write(f"**{row['Data'].strftime('%d/%m')}** - {row['Dia']}")
                         st.write(f"{row['Grupo Muscular']}: {row['Exercício']} ({row['Carga (kg)']}kg)")
             else:
@@ -367,7 +406,6 @@ elif aba == "📊 Progresso":
 elif aba == "🏆 Metas":
     st.title("🏆 Metas e Objetivos")
     
-    # Carregar metas salvas ou usar padrão
     df_metas = load_data("metas", default_columns=["Meta", "Valor", "Atual"])
     
     if df_metas.empty:
@@ -407,7 +445,6 @@ elif aba == "🏆 Metas":
     with col2:
         st.subheader("Progresso das Metas")
         
-        # Atualizar valores atuais
         df_progresso = load_data("progresso")
         df_treinos = load_data("treinos")
         
@@ -423,9 +460,8 @@ elif aba == "🏆 Metas":
             elif row["Meta"] == "Dias de Treino" and not df_treinos.empty:
                 df_metas.at[i, "Atual"] = df_treinos["Data"].nunique()
         
-        # Mostrar progresso
         for _, row in df_metas.iterrows():
-            with st.container(border=True):
+            with bordered_container():
                 st.write(f"**{row['Meta']}**")
                 if pd.notna(row["Atual"]):
                     progresso = (row["Atual"] / row["Valor"]) * 100
@@ -446,7 +482,6 @@ elif aba == "⚙️ Configurações":
         default=list(st.session_state.treino_por_dia.keys())
     )
     
-    # Editor de treinos
     novo_treino = {}
     for dia in dias_treino:
         st.markdown(f"### {dia}")
@@ -469,13 +504,12 @@ elif aba == "⚙️ Configurações":
         st.session_state.treino_por_dia = novo_treino
         st.success("Plano de treino atualizado com sucesso!")
     
-    st.divider()
+    st.markdown("---")
     st.subheader("Exportar/Importar Dados")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        # Exportar dados
         if os.path.exists(os.path.join("gym_data", "treinos.csv")):
             with open(os.path.join("gym_data", "treinos.csv"), "rb") as f:
                 st.download_button(
@@ -488,13 +522,11 @@ elif aba == "⚙️ Configurações":
             st.warning("Nenhum dado de treino para exportar")
     
     with col2:
-        # Importar dados
         uploaded_file = st.file_uploader("📥 Importar Dados", type=["csv"])
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
                 
-                # Verificar se é um arquivo válido
                 if "Exercício" in df.columns and "Carga (kg)" in df.columns:
                     if save_data("treinos", df):
                         st.success("Dados de treino importados com sucesso!")
